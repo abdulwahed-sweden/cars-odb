@@ -7,10 +7,11 @@ import { VehicleInformation } from "@/components/car-doc/vehicle-information";
 import { ScanVisualizer } from "@/components/car-doc/scan-visualizer";
 import { DiagnosticResults, type DiagnosticCodeItem } from "@/components/car-doc/diagnostic-results";
 import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { explainCode, type CodeExplanationOutput, type CodeExplanationInput } from "@/ai/flows/code-explanation";
-import { RefreshCcw, Moon, Sun, Github } from "lucide-react";
+import { AlertTriangle } from "lucide-react"; 
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"; 
+
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 interface VehicleInfo { vin: string; make: string; model: string; year: string; }
@@ -27,7 +28,6 @@ const MOCK_CODES: Array<Omit<DiagnosticCodeItem, "id" | "explanation" | "isExpla
 ];
 
 export default function CarDocPage() {
-  const [theme, setTheme] = useState("light");
   const { toast } = useToast();
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
@@ -42,18 +42,6 @@ export default function CarDocPage() {
   const [detectedCodes, setDetectedCodes] = useState<DiagnosticCodeItem[]>([]);
   const [isScanCompleted, setIsScanCompleted] = useState(false);
 
-  useEffect(() => {
-    const storedTheme = localStorage.getItem("theme") || "light";
-    setTheme(storedTheme);
-    document.documentElement.classList.toggle("dark", storedTheme === "dark");
-  }, []);
-
-  const toggleTheme = () => {
-    const newTheme = theme === "light" ? "dark" : "light";
-    setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
-    document.documentElement.classList.toggle("dark", newTheme === "dark");
-  };
 
   const handleConnect = (type: "usb" | "bluetooth") => {
     setConnectionStatus("connecting");
@@ -175,83 +163,61 @@ export default function CarDocPage() {
   const vehicleDetailsString = vehicleInfo ? `${vehicleInfo.make} ${vehicleInfo.model} ${vehicleInfo.year} (VIN: ${vehicleInfo.vin})` : null;
 
   return (
-    <div className="flex flex-col items-center min-h-screen p-4 sm:p-8 bg-secondary/30 dark:bg-background transition-colors duration-300">
-      <header className="w-full max-w-4xl mb-8 flex justify-between items-center">
-        <h1 className="text-4xl font-bold text-primary">CarDoc</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
-            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => window.location.reload()} aria-label="Refresh page">
-            <RefreshCcw className="h-5 w-5" />
-          </Button>
-           <a href="https://github.com/firebase/genkit/tree/main/experimental/genkit-nextjs-starter" target="_blank" rel="noopener noreferrer">
-            <Button variant="ghost" size="icon" aria-label="GitHub Repository">
-              <Github className="h-5 w-5" />
-            </Button>
-          </a>
-        </div>
-      </header>
+    <div className="w-full max-w-4xl mx-auto space-y-8">
+      <ConnectionManager status={connectionStatus} onConnect={handleConnect} onDisconnect={handleDisconnect} />
 
-      <main className="w-full max-w-4xl space-y-8">
-        <ConnectionManager status={connectionStatus} onConnect={handleConnect} onDisconnect={handleDisconnect} />
+      {connectionStatus === 'connected' && (
+        <>
+          <Separator />
+          <VehicleInformation 
+            initialInfo={vehicleInfo} 
+            onSave={handleSaveVehicleInfo} 
+            isEditable={true} 
+          />
+        </>
+      )}
 
-        {connectionStatus === 'connected' && (
-          <>
-            <Separator />
-            <VehicleInformation 
-              initialInfo={vehicleInfo} 
-              onSave={handleSaveVehicleInfo} 
-              isEditable={true} 
-            />
-          </>
-        )}
-
-        {vehicleInfo && connectionStatus === 'connected' && (
-          <>
-            <Separator />
-            <ScanVisualizer
-              isScanning={isScanning}
-              scanProgress={scanProgress}
-              currentScanningModule={currentScanningModule}
-              moduleStatus={moduleStatus}
-              detectedCodesCount={detectedCodes.length}
-              onStartScan={startFullScanSimulation}
-              onCancelScan={() => {
-                setIsScanning(false);
-                // Logic to properly stop the interval if startFullScanSimulation returns it
-                toast({title: "Scan Cancelled", description: "Vehicle scan has been stopped."});
-              }}
-              isScanCompleted={isScanCompleted}
-            />
-          </>
-        )}
-        
-        {isScanCompleted && detectedCodes.length > 0 && (
-           <>
-            <Separator />
-            <DiagnosticResults codes={detectedCodes} onExplainCode={handleExplainCode} vehicleDetails={vehicleDetailsString} />
-           </>
-        )}
-         {isScanCompleted && detectedCodes.length === 0 && (
-           <>
-            <Separator />
-             <Card className="w-full max-w-lg shadow-lg mx-auto">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <AlertTriangle /> Diagnostic Results
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground text-center py-4">Scan completed, but no diagnostic codes were found.</p>
-                </CardContent>
-              </Card>
-           </>
-        )}
-      </main>
-      <footer className="w-full max-w-4xl mt-12 text-center text-sm text-muted-foreground">
-        <p>&copy; {new Date().getFullYear()} CarDoc. Advanced Vehicle Diagnostics.</p>
-      </footer>
+      {vehicleInfo && connectionStatus === 'connected' && (
+        <>
+          <Separator />
+          <ScanVisualizer
+            isScanning={isScanning}
+            scanProgress={scanProgress}
+            currentScanningModule={currentScanningModule}
+            moduleStatus={moduleStatus}
+            detectedCodesCount={detectedCodes.length}
+            onStartScan={startFullScanSimulation}
+            onCancelScan={() => {
+              setIsScanning(false);
+              // Logic to properly stop the interval if startFullScanSimulation returns it
+              toast({title: "Scan Cancelled", description: "Vehicle scan has been stopped."});
+            }}
+            isScanCompleted={isScanCompleted}
+          />
+        </>
+      )}
+      
+      {isScanCompleted && detectedCodes.length > 0 && (
+         <>
+          <Separator />
+          <DiagnosticResults codes={detectedCodes} onExplainCode={handleExplainCode} vehicleDetails={vehicleDetailsString} />
+         </>
+      )}
+       {isScanCompleted && detectedCodes.length === 0 && (
+         <>
+          <Separator />
+           <Card className="w-full max-w-lg shadow-lg mx-auto">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle /> Diagnostic Results
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-center py-4">Scan completed, but no diagnostic codes were found.</p>
+              </CardContent>
+            </Card>
+         </>
+      )}
     </div>
   );
 }
