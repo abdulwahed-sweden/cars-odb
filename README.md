@@ -2,4 +2,11 @@
 
 This is a NextJS frontend for Firebase Studio cars ODB scanner.
 
+## Getting Started
+
+1. Clone the repository.
+2. Install dependencies using `npm install` or `yarn install`.
+3. Run the development server with `npm run dev` or `yarn dev`.
+4. Open your browser to `http://localhost:3000`.
+
 To get started, take a look at src/app/page.tsx.
