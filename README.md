@@ -1,4 +1,4 @@
-# Firebase Studio
+# Firebase Studio cars ODB scanner
 
 This is a NextJS starter in Firebase Studio.
 
