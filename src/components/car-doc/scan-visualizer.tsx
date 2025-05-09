@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ScanLine, Loader2, FileCheck2, FileX2, CheckCircle2, AlertTriangle, PlayCircle, XCircle } from "lucide-react";
+import { ScanLine, Loader2, FileCheck2, FileX2, CheckCircle2, AlertTriangle, PlayCircle, XCircle, CalendarDays } from "lucide-react";
 
 interface ModuleStatusItem {
   name: string;
@@ -22,6 +22,7 @@ interface ScanVisualizerProps {
   onStartScan: () => void;
   onCancelScan: () => void;
   isScanCompleted: boolean;
+  inspectionDate: Date | null;
 }
 
 export function ScanVisualizer({
@@ -32,7 +33,8 @@ export function ScanVisualizer({
   detectedCodesCount,
   onStartScan,
   onCancelScan,
-  isScanCompleted
+  isScanCompleted,
+  inspectionDate
 }: ScanVisualizerProps) {
   
   const getStatusIcon = (status: ModuleStatusItem["status"]) => {
@@ -76,6 +78,13 @@ export function ScanVisualizer({
           <span className="font-semibold text-accent">{detectedCodesCount}</span>
         </div>
         
+        {inspectionDate && isScanCompleted && (
+          <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <CalendarDays size={14}/> 
+            <span>Last Scan: {inspectionDate.toLocaleDateString()} {inspectionDate.toLocaleTimeString()}</span>
+          </div>
+        )}
+
         <ScrollArea className="h-40 w-full rounded-md border p-2">
           <ul className="space-y-1">
             {moduleStatus.map((mod, index) => (
@@ -107,3 +116,4 @@ export function ScanVisualizer({
     </Card>
   );
 }
+
