@@ -71,16 +71,56 @@ export default function CarDocPage() {
     } else {
       setIsSimulatingSensors(true);
       toast({ title: "Sensor Simulation Started", description: "Generating live data..."});
-      // Initial update immediately
-      const updateSensors = () => {
-        setLiveSensorData({
-          rpm: Math.floor(Math.random() * (3500 - 600 + 1)) + 600, // 600 to 3500 RPM
-          coolantTemp: Math.floor(Math.random() * (105 - 75 + 1)) + 75, // 75 to 105 °C
-          speed: Math.floor(Math.random() * 121), // 0 to 120 km/h
+      
+      // Initialize with more realistic starting values
+      setLiveSensorData({
+        rpm: 750, // Idle RPM
+        coolantTemp: 60, // Cooler start temp
+        speed: 0, // Start at 0 speed
+      });
+
+      sensorIntervalRef.current = setInterval(() => {
+        setLiveSensorData(prevData => {
+          // RPM
+          let currentRpm = typeof prevData.rpm === 'number' ? prevData.rpm : 750;
+          let rpmChange = Math.random() * 200 - 100; // Gradual change: -100 to +100 RPM
+          let newRpm = currentRpm + rpmChange;
+          
+          // Speed
+          let currentSpeed = typeof prevData.speed === 'number' ? prevData.speed : 0;
+          let speedChange = Math.random() * 8 - 3; // Gradual change: -3 km/h to +5 km/h
+          let newSpeed = currentSpeed + speedChange;
+          newSpeed = Math.max(0, newSpeed); // Ensure speed is not negative
+          newSpeed = Math.min(newSpeed, 130); // Max speed 130 km/h
+
+          if (newSpeed < 1) { // If car is virtually stopped
+            newRpm = 650 + Math.random() * 200; // Idle RPM between 650 and 850
+          } else {
+            // Basic correlation: higher speed might mean slightly higher RPMs tendency
+            if (newSpeed > 80 && newRpm < 2500) newRpm += Math.random() * 300;
+            else if (newSpeed > 50 && newRpm < 2000) newRpm += Math.random() * 200;
+            else if (newSpeed < 30 && newRpm > 3000) newRpm -= Math.random() * 300;
+          }
+          newRpm = Math.min(Math.max(newRpm, 650), 4500); // Clamp RPM: 650 (low idle) to 4500
+
+          // Coolant Temperature
+          let currentCoolantTemp = typeof prevData.coolantTemp === 'number' ? prevData.coolantTemp : 60;
+          let coolantTempChange;
+          if (currentCoolantTemp < 88) { // If engine is not at typical operating temp
+            coolantTempChange = Math.random() * 0.8 + 0.2; // Tend to increase (0.2 to 1.0 C)
+          } else { // Around operating temperature
+            coolantTempChange = Math.random() * 0.6 - 0.3; // Fluctuate slightly (-0.3 to +0.3 C)
+          }
+          let newCoolantTemp = currentCoolantTemp + coolantTempChange;
+          newCoolantTemp = Math.min(Math.max(newCoolantTemp, 50), 98); // Clamp Coolant Temp: 50C to 98C
+
+          return {
+            rpm: Math.round(newRpm),
+            coolantTemp: parseFloat(newCoolantTemp.toFixed(1)), // Keep one decimal for temp
+            speed: Math.round(newSpeed),
+          };
         });
-      };
-      updateSensors(); 
-      sensorIntervalRef.current = setInterval(updateSensors, 750); // Update every 750ms
+      }, 1500); // Update every 1.5 seconds for smoother, more realistic changes
     }
   };
 
@@ -92,7 +132,6 @@ export default function CarDocPage() {
     setDetectedCodes([]);
     setIsScanCompleted(false);
     
-    // Stop sensor simulation if active
     if (isSimulatingSensors) {
         if (sensorIntervalRef.current) {
             clearInterval(sensorIntervalRef.current);
@@ -140,7 +179,6 @@ export default function CarDocPage() {
       return;
     }
 
-    // Stop sensor simulation if it's running
     if (isSimulatingSensors) {
         if (sensorIntervalRef.current) {
             clearInterval(sensorIntervalRef.current);
@@ -251,7 +289,7 @@ export default function CarDocPage() {
             onStartScan={startFullScanSimulation}
             onCancelScan={() => {
               setIsScanning(false);
-              resetScanState(); // Also resets sensor sim
+              resetScanState(); 
               toast({title: "Scan Cancelled", description: "Vehicle scan has been stopped."});
             }}
             isScanCompleted={isScanCompleted}
@@ -259,7 +297,7 @@ export default function CarDocPage() {
         </>
       )}
       
-      {isScanCompleted && (detectedCodes.length > 0 || connectionStatus === 'connected') && ( // Show results card if codes or connected for live data
+      {isScanCompleted && (detectedCodes.length > 0 || connectionStatus === 'connected') && (
          <>
           <Separator />
           <DiagnosticResults 
@@ -272,7 +310,7 @@ export default function CarDocPage() {
           />
          </>
       )}
-       {isScanCompleted && detectedCodes.length === 0 && (
+       {isScanCompleted && detectedCodes.length === 0 && connectionStatus === 'connected' && (
          <>
           <Separator />
            <Card className="w-full max-w-lg shadow-lg mx-auto">
@@ -283,6 +321,14 @@ export default function CarDocPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground text-center py-4">Scan completed, but no diagnostic codes were found.</p>
+                 <DiagnosticResults 
+                    codes={[]} 
+                    onExplainCode={handleExplainCode} 
+                    vehicleDetails={vehicleDetailsString}
+                    liveSensorData={liveSensorData}
+                    isSimulatingSensors={isSimulatingSensors}
+                    onToggleSensorSimulation={handleToggleSensorSimulation}
+                  />
               </CardContent>
             </Card>
          </>
