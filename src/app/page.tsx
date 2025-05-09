@@ -25,7 +25,6 @@ interface LiveSensorData {
 
 const ALL_MODULES: string[] = ['Engine Control Unit (ECU)', 'Transmission Control Module (TCM)', 'Anti-lock Braking System (ABS)', 'Body Control Module (BCM)', 'Airbag Control Unit (ACU)'];
 
-// Updated MOCK_CODES with category and status
 const MOCK_CODES_TEMPLATES: Array<Omit<DiagnosticCodeItem, "id" | "explanation" | "isExplaining">> = [
   { code: "P0300", description: "Random/Multiple Cylinder Misfire Detected", severity: "high", category: "Engine", status: "active" },
   { code: "P0420", description: "Catalyst System Efficiency Below Threshold (Bank 1)", severity: "medium", category: "Engine", status: "active" },
@@ -57,11 +56,17 @@ export default function CarDocPage() {
   const [liveSensorData, setLiveSensorData] = useState<LiveSensorData>({ rpm: '---', coolantTemp: '--', speed: '--' });
   const [isSimulatingSensors, setIsSimulatingSensors] = useState(false);
   const sensorIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const scanIntervalId = useRef<NodeJS.Timeout | null>(null);
+  const scanCurrentModuleIndexRef = useRef<number>(0);
+
 
   useEffect(() => {
     return () => {
       if (sensorIntervalRef.current) {
         clearInterval(sensorIntervalRef.current);
+      }
+      if (scanIntervalId.current) {
+        clearInterval(scanIntervalId.current);
       }
     };
   }, []);
@@ -78,37 +83,51 @@ export default function CarDocPage() {
     } else {
       setIsSimulatingSensors(true);
       toast({ title: "Sensor Simulation Started", description: "Generating live data..."});
-      setLiveSensorData({ rpm: 750, coolantTemp: 60, speed: 0 });
+      setLiveSensorData({ rpm: 750, coolantTemp: 60, speed: 0 }); // Initial realistic values
       sensorIntervalRef.current = setInterval(() => {
         setLiveSensorData(prevData => {
           let currentRpm = typeof prevData.rpm === 'number' ? prevData.rpm : 750;
-          let rpmChange = Math.random() * 200 - 100;
-          let newRpm = currentRpm + rpmChange;
-          
+          let newRpm: number;
           let currentSpeed = typeof prevData.speed === 'number' ? prevData.speed : 0;
-          let speedChange = Math.random() * 8 - 3;
-          let newSpeed = currentSpeed + speedChange;
-          newSpeed = Math.max(0, newSpeed);
-          newSpeed = Math.min(newSpeed, 130);
-
-          if (newSpeed < 1) {
-            newRpm = 650 + Math.random() * 200;
-          } else {
-            if (newSpeed > 80 && newRpm < 2500) newRpm += Math.random() * 300;
-            else if (newSpeed > 50 && newRpm < 2000) newRpm += Math.random() * 200;
-            else if (newSpeed < 30 && newRpm > 3000) newRpm -= Math.random() * 300;
-          }
-          newRpm = Math.min(Math.max(newRpm, 650), 4500);
-
+          let newSpeed: number;
           let currentCoolantTemp = typeof prevData.coolantTemp === 'number' ? prevData.coolantTemp : 60;
-          let coolantTempChange;
-          if (currentCoolantTemp < 88) {
-            coolantTempChange = Math.random() * 0.8 + 0.2;
-          } else {
-            coolantTempChange = Math.random() * 0.6 - 0.3;
+          let newCoolantTemp: number;
+
+          // Speed simulation
+          const accelerationChance = 0.6; 
+          const decelerationChance = 0.3;
+          const randomFactor = Math.random();
+
+          if (currentSpeed < 5) { // Starting from standstill
+            newSpeed = currentSpeed + Math.random() * 3; // Gentle start
+          } else if (randomFactor < accelerationChance && currentSpeed < 120) { // Accelerate
+            newSpeed = currentSpeed + Math.random() * 5;
+          } else if (randomFactor < accelerationChance + decelerationChance && currentSpeed > 0) { // Decelerate
+            newSpeed = currentSpeed - Math.random() * 7;
+          } else { // Maintain speed with slight variation
+            newSpeed = currentSpeed + (Math.random() * 2 - 1);
           }
-          let newCoolantTemp = currentCoolantTemp + coolantTempChange;
-          newCoolantTemp = Math.min(Math.max(newCoolantTemp, 50), 98);
+          newSpeed = Math.max(0, Math.min(newSpeed, 130)); // Clamp speed
+
+          // RPM simulation based on speed
+          if (newSpeed < 1) { // Idle
+            newRpm = 650 + Math.random() * 200; // 650-850 RPM
+          } else if (newSpeed < 30) {
+            newRpm = 1000 + newSpeed * 30 + (Math.random() * 200 - 100); // 1000-1900 RPM
+          } else if (newSpeed < 70) {
+            newRpm = 1500 + newSpeed * 20 + (Math.random() * 300 - 150); // 1500-2900 RPM
+          } else {
+            newRpm = 2000 + newSpeed * 15 + (Math.random() * 400 - 200); // 2000-3950 RPM
+          }
+          newRpm = Math.min(Math.max(newRpm, 600), 4500); // Clamp RPM
+
+          // Coolant temperature simulation
+          if (currentCoolantTemp < 88) {
+            newCoolantTemp = currentCoolantTemp + (Math.random() * 0.5 + 0.1); // Slower warm-up
+          } else { // Around operating temperature
+            newCoolantTemp = currentCoolantTemp + (Math.random() * 0.4 - 0.2); // Smaller fluctuations
+          }
+          newCoolantTemp = Math.min(Math.max(newCoolantTemp, 20), 98); // Clamp coolant temp
 
           return {
             rpm: Math.round(newRpm),
@@ -116,7 +135,7 @@ export default function CarDocPage() {
             speed: Math.round(newSpeed),
           };
         });
-      }, 1500);
+      }, 1500); // Update interval
     }
   };
 
@@ -128,7 +147,13 @@ export default function CarDocPage() {
     setDetectedCodes([]);
     setIsScanCompleted(false);
     setInspectionDate(null);
+    scanCurrentModuleIndexRef.current = 0;
     
+    if (scanIntervalId.current) {
+        clearInterval(scanIntervalId.current);
+        scanIntervalId.current = null;
+    }
+
     if (isSimulatingSensors) {
         if (sensorIntervalRef.current) {
             clearInterval(sensorIntervalRef.current);
@@ -169,6 +194,16 @@ export default function CarDocPage() {
     toast({ title: "Vehicle Info Saved", description: `${info.make} ${info.model} (${info.year}) details updated.` });
   };
   
+  const cancelScan = useCallback(() => {
+    setIsScanning(false);
+    if (scanIntervalId.current) {
+      clearInterval(scanIntervalId.current);
+      scanIntervalId.current = null;
+    }
+    // Keep current codes and inspection date, but allow re-scan.
+    toast({title: "Scan Cancelled", description: "Vehicle scan has been stopped."});
+  }, [toast]);
+
 
   const startFullScanSimulation = useCallback(() => {
     if (!vehicleInfo) {
@@ -188,52 +223,82 @@ export default function CarDocPage() {
 
     resetScanState(); // Ensure clean state before new scan
     setIsScanning(true);
+    scanCurrentModuleIndexRef.current = 0;
     
-    let currentModuleIndex = 0;
-    let tempCodes: DiagnosticCodeItem[] = [];
+    const initialModuleStatuses = ALL_MODULES.map(name => ({ name, status: 'pending' as ModuleScanStatus }));
+    setModuleStatus(initialModuleStatuses);
+    
+    let tempCodesHolder: DiagnosticCodeItem[] = []; // Use a local variable to accumulate codes before setting state once
 
-    const newModuleStatus = ALL_MODULES.map(name => ({ name, status: 'pending' as ModuleScanStatus }));
-    setModuleStatus(newModuleStatus);
+    scanIntervalId.current = setInterval(() => {
+      if (!isScanningRef.current || scanCurrentModuleIndexRef.current >= ALL_MODULES.length) {
+        if (scanIntervalId.current) clearInterval(scanIntervalId.current);
+        if(isScanningRef.current && scanCurrentModuleIndexRef.current >= ALL_MODULES.length){ // Natural completion
+            setIsScanning(false);
+            setIsScanCompleted(true);
+            setInspectionDate(new Date());
+            setCurrentScanningModule(null);
+            setDetectedCodes(tempCodesHolder);
+            toast({ title: "Scan Complete", description: `Found ${tempCodesHolder.length} codes. Inspection date logged.` });
+        }
+        return;
+      }
 
-    const scanInterval = setInterval(() => {
-      newModuleStatus[currentModuleIndex].status = 'scanning';
-      setCurrentScanningModule(ALL_MODULES[currentModuleIndex]);
-      setModuleStatus([...newModuleStatus]);
+      const moduleIndexForThisScan = scanCurrentModuleIndexRef.current;
+      
+      setCurrentScanningModule(ALL_MODULES[moduleIndexForThisScan]);
+      setModuleStatus(prevModules => 
+        prevModules.map((mod, index) => 
+          index === moduleIndexForThisScan ? { ...mod, status: 'scanning' } : mod
+        )
+      );
 
       setTimeout(() => {
-        const moduleHasError = Math.random() < 0.1; 
-        newModuleStatus[currentModuleIndex].status = moduleHasError ? 'error' : 'complete';
-        setModuleStatus([...newModuleStatus]);
+        if (!isScanningRef.current) return; // Check if scan was cancelled during timeout
 
-        // Simulate finding a few codes
-        if (!moduleHasError && Math.random() > 0.6 && tempCodes.length < 5) { // Limit to 5 codes for demo
-           const mockCodeTemplate = MOCK_CODES_TEMPLATES[tempCodes.length % MOCK_CODES_TEMPLATES.length];
-           tempCodes.push({
+        const moduleHasError = Math.random() < 0.1; 
+        
+        setModuleStatus(prevModules => 
+          prevModules.map((mod, index) => 
+            index === moduleIndexForThisScan ? { ...mod, status: moduleHasError ? 'error' : 'complete' } : mod
+          )
+        );
+
+        if (!moduleHasError && Math.random() > 0.6 && tempCodesHolder.length < 5) {
+           const mockCodeTemplate = MOCK_CODES_TEMPLATES[tempCodesHolder.length % MOCK_CODES_TEMPLATES.length];
+           tempCodesHolder.push({
              id: `code-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
              ...mockCodeTemplate,
            });
-           setDetectedCodes([...tempCodes]);
         }
-
-        currentModuleIndex++;
-        const overallProgress = Math.round((currentModuleIndex / ALL_MODULES.length) * 100);
+        
+        scanCurrentModuleIndexRef.current++;
+        const overallProgress = Math.round((scanCurrentModuleIndexRef.current / ALL_MODULES.length) * 100);
         setScanProgress(overallProgress);
 
-        if (currentModuleIndex >= ALL_MODULES.length) {
-          clearInterval(scanInterval);
+        if (scanCurrentModuleIndexRef.current >= ALL_MODULES.length) {
+          if (scanIntervalId.current) clearInterval(scanIntervalId.current);
           setIsScanning(false);
           setIsScanCompleted(true);
-          setInspectionDate(new Date()); // Log inspection date
+          setInspectionDate(new Date());
           setCurrentScanningModule(null);
-          toast({ title: "Scan Complete", description: `Found ${tempCodes.length} codes. Inspection date logged.` });
-        } else {
-          setCurrentScanningModule(ALL_MODULES[currentModuleIndex]);
+          setDetectedCodes(tempCodesHolder); // Set codes once at the end
+          toast({ title: "Scan Complete", description: `Found ${tempCodesHolder.length} codes. Inspection date logged.` });
         }
       }, 1000 + Math.random() * 1000); 
-    }, 1500); 
+    }, 1500);
 
-    return () => clearInterval(scanInterval);
+    return () => {
+        if(scanIntervalId.current) clearInterval(scanIntervalId.current);
+    }
+
   }, [vehicleInfo, toast, isSimulatingSensors, resetScanState]);
+  
+  // Ref to keep track of isScanning state for intervals/timeouts
+  const isScanningRef = useRef(isScanning);
+  useEffect(() => {
+    isScanningRef.current = isScanning;
+  }, [isScanning]);
 
 
   const handleExplainCode = async (codeId: string, code: string, vehicleDetailsStr: string | null) => {
@@ -267,7 +332,7 @@ export default function CarDocPage() {
     toast({ title: "Re-scan Initiated", description: `Re-scanning for code ${codeToRescan.code}... (simulation)` });
     
     setTimeout(() => {
-      const isStillActive = Math.random() > 0.4; // 40% chance it gets resolved by "re-scan"
+      const isStillActive = Math.random() > 0.4; 
       setDetectedCodes(prev => prev.map(c => {
         if (c.id === codeId) {
           const newStatus = isStillActive ? "active" : "resolved";
@@ -280,8 +345,6 @@ export default function CarDocPage() {
   };
 
   const handleResetResolvedCodes = () => {
-    // This will remove resolved codes from the current view or mark them differently.
-    // For this simulation, we'll filter them out. In a real app, they might be archived.
     const activeCodes = detectedCodes.filter(code => code.status !== "resolved");
     if (activeCodes.length === detectedCodes.length) {
         toast({ title: "No Resolved Codes", description: "There are no resolved codes to clear from the current list.", variant: "default"});
@@ -316,14 +379,9 @@ export default function CarDocPage() {
             scanProgress={scanProgress}
             currentScanningModule={currentScanningModule}
             moduleStatus={moduleStatus}
-            detectedCodesCount={detectedCodes.length}
+            detectedCodesCount={detectedCodes.filter(c => c.status !== 'resolved').length} // Show active codes count
             onStartScan={startFullScanSimulation}
-            onCancelScan={() => {
-              setIsScanning(false);
-              // Keep current codes and inspection date, but allow re-scan.
-              // resetScanState(); // Full reset might not be desired on simple cancel
-              toast({title: "Scan Cancelled", description: "Vehicle scan has been stopped."});
-            }}
+            onCancelScan={cancelScan}
             isScanCompleted={isScanCompleted}
             inspectionDate={inspectionDate}
           />
@@ -354,12 +412,12 @@ export default function CarDocPage() {
            <Card className="w-full max-w-lg shadow-lg mx-auto">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle /> Diagnostic Results
+                  <AlertTriangle /> Diagnostic Scan Results
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground text-center py-4">Scan completed, but no diagnostic codes were found.</p>
-                 <DiagnosticResults 
+                 <DiagnosticResults // Still show this for sensor data and other info
                     codes={[]} 
                     onExplainCode={handleExplainCode} 
                     vehicleDetails={vehicleDetailsString}
@@ -380,3 +438,5 @@ export default function CarDocPage() {
   );
 }
 
+
+    
