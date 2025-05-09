@@ -11,10 +11,10 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, BrainCircuit, Gauge, ListChecks, Loader2, ShieldAlert, ShieldCheck, ShieldQuestion, ShieldX, Wand2 } from "lucide-react";
+import { AlertTriangle, BrainCircuit, Gauge, ListChecks, Loader2, ShieldAlert, ShieldCheck, ShieldQuestion, ShieldX, Wand2, Activity, StopCircle } from "lucide-react";
 
 export interface DiagnosticCodeItem {
   id: string;
@@ -25,13 +25,29 @@ export interface DiagnosticCodeItem {
   isExplaining?: boolean;
 }
 
+interface LiveSensorDataItem {
+  rpm: number | string;
+  coolantTemp: number | string;
+  speed: number | string;
+}
+
 interface DiagnosticResultsProps {
   codes: DiagnosticCodeItem[];
   onExplainCode: (codeId: string, code: string, vehicleDetails: string | null) => void;
   vehicleDetails: string | null;
+  liveSensorData: LiveSensorDataItem;
+  isSimulatingSensors: boolean;
+  onToggleSensorSimulation: () => void;
 }
 
-export function DiagnosticResults({ codes, onExplainCode, vehicleDetails }: DiagnosticResultsProps) {
+export function DiagnosticResults({ 
+  codes, 
+  onExplainCode, 
+  vehicleDetails,
+  liveSensorData,
+  isSimulatingSensors,
+  onToggleSensorSimulation
+}: DiagnosticResultsProps) {
   const getSeverityBadge = (severity: DiagnosticCodeItem["severity"]) => {
     switch (severity) {
       case "low":
@@ -45,32 +61,23 @@ export function DiagnosticResults({ codes, onExplainCode, vehicleDetails }: Diag
     }
   };
 
-  if (codes.length === 0) {
-    return (
-      <Card className="w-full max-w-lg shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle /> Diagnostic Results
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-center py-4">No diagnostic codes found or scan not yet performed.</p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const sensorDisplayData = [
+    { name: "Engine RPM", value: liveSensorData.rpm, unit: "RPM", icon: <Gauge className="mx-auto mb-1 h-8 w-8 text-accent" /> },
+    { name: "Coolant Temp", value: liveSensorData.coolantTemp, unit: "°C", icon: <Gauge className="mx-auto mb-1 h-8 w-8 text-accent" /> },
+    { name: "Vehicle Speed", value: liveSensorData.speed, unit: "km/h", icon: <Gauge className="mx-auto mb-1 h-8 w-8 text-accent" /> },
+  ];
 
   return (
     <div className="w-full max-w-3xl space-y-6">
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle /> Diagnostic Trouble Codes ({codes.length})
-          </CardTitle>
-          <CardDescription>Review the detected codes and their explanations.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {codes.length > 0 ? (
+      {codes.length > 0 && (
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle /> Diagnostic Trouble Codes ({codes.length})
+            </CardTitle>
+            <CardDescription>Review the detected codes and their explanations.</CardDescription>
+          </CardHeader>
+          <CardContent>
             <Accordion type="single" collapsible className="w-full">
               {codes.map((item) => (
                 <AccordionItem value={item.id} key={item.id}>
@@ -111,26 +118,22 @@ export function DiagnosticResults({ codes, onExplainCode, vehicleDetails }: Diag
                 </AccordionItem>
               ))}
             </Accordion>
-          ) : (
-            <p className="text-muted-foreground text-center py-4">No codes detected.</p>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Gauge /> Live Sensor Data
           </CardTitle>
-          <CardDescription>Monitor real-time sensor readings from your vehicle. (Placeholder)</CardDescription>
+          <CardDescription>
+            {isSimulatingSensors ? "Simulating real-time sensor readings." : "Monitor real-time sensor readings from your vehicle."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-center">
-            {[
-              { name: "Engine RPM", value: "---", unit: "RPM", icon: <Gauge className="mx-auto mb-1 h-8 w-8 text-accent" /> },
-              { name: "Coolant Temp", value: "--", unit: "°C", icon: <Gauge className="mx-auto mb-1 h-8 w-8 text-accent" /> },
-              { name: "Vehicle Speed", value: "--", unit: "km/h", icon: <Gauge className="mx-auto mb-1 h-8 w-8 text-accent" /> },
-            ].map(sensor => (
+            {sensorDisplayData.map(sensor => (
               <div key={sensor.name} className="p-4 border rounded-lg bg-muted/30">
                 {sensor.icon}
                 <p className="text-sm text-muted-foreground">{sensor.name}</p>
@@ -138,8 +141,23 @@ export function DiagnosticResults({ codes, onExplainCode, vehicleDetails }: Diag
               </div>
             ))}
           </div>
-           <p className="text-xs text-muted-foreground mt-4 text-center">Actual sensor data and gauges would be displayed here.</p>
+           <p className="text-xs text-muted-foreground mt-4 text-center">
+             {isSimulatingSensors ? "Values are simulated and update dynamically." : "Click below to start live data simulation."}
+           </p>
         </CardContent>
+        <CardFooter className="justify-center">
+            <Button onClick={onToggleSensorSimulation} variant="outline">
+            {isSimulatingSensors ? (
+                <>
+                <StopCircle className="mr-2 h-4 w-4" /> Stop Simulation
+                </>
+            ) : (
+                <>
+                <Activity className="mr-2 h-4 w-4" /> Start Sensor Simulation
+                </>
+            )}
+            </Button>
+        </CardFooter>
       </Card>
 
       <Card className="shadow-lg">
@@ -164,4 +182,3 @@ export function DiagnosticResults({ codes, onExplainCode, vehicleDetails }: Diag
     </div>
   );
 }
-

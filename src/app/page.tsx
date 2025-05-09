@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ConnectionManager } from "@/components/car-doc/connection-manager";
 import { VehicleInformation } from "@/components/car-doc/vehicle-information";
 import { ScanVisualizer } from "@/components/car-doc/scan-visualizer";
@@ -17,6 +17,11 @@ type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 interface VehicleInfo { vin: string; make: string; model: string; year: string; }
 type ModuleScanStatus = "pending" | "scanning" | "complete" | "error";
 interface ModuleStatus { name: string; status: ModuleScanStatus; }
+interface LiveSensorData {
+  rpm: number | string;
+  coolantTemp: number | string;
+  speed: number | string;
+}
 
 const ALL_MODULES: string[] = ['Engine Control Unit (ECU)', 'Transmission Control Module (TCM)', 'Anti-lock Braking System (ABS)', 'Body Control Module (BCM)', 'Airbag Control Unit (ACU)'];
 const MOCK_CODES: Array<Omit<DiagnosticCodeItem, "id" | "explanation" | "isExplaining">> = [
@@ -42,16 +47,70 @@ export default function CarDocPage() {
   const [detectedCodes, setDetectedCodes] = useState<DiagnosticCodeItem[]>([]);
   const [isScanCompleted, setIsScanCompleted] = useState(false);
 
+  const [liveSensorData, setLiveSensorData] = useState<LiveSensorData>({ rpm: '---', coolantTemp: '--', speed: '--' });
+  const [isSimulatingSensors, setIsSimulatingSensors] = useState(false);
+  const sensorIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (sensorIntervalRef.current) {
+        clearInterval(sensorIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const handleToggleSensorSimulation = () => {
+    if (isSimulatingSensors) {
+      if (sensorIntervalRef.current) {
+        clearInterval(sensorIntervalRef.current);
+        sensorIntervalRef.current = null;
+      }
+      setIsSimulatingSensors(false);
+      setLiveSensorData({ rpm: '---', coolantTemp: '--', speed: '--' });
+      toast({ title: "Sensor Simulation Stopped"});
+    } else {
+      setIsSimulatingSensors(true);
+      toast({ title: "Sensor Simulation Started", description: "Generating live data..."});
+      // Initial update immediately
+      const updateSensors = () => {
+        setLiveSensorData({
+          rpm: Math.floor(Math.random() * (3500 - 600 + 1)) + 600, // 600 to 3500 RPM
+          coolantTemp: Math.floor(Math.random() * (105 - 75 + 1)) + 75, // 75 to 105 °C
+          speed: Math.floor(Math.random() * 121), // 0 to 120 km/h
+        });
+      };
+      updateSensors(); 
+      sensorIntervalRef.current = setInterval(updateSensors, 750); // Update every 750ms
+    }
+  };
+
+  const resetScanState = useCallback(() => {
+    setIsScanning(false);
+    setScanProgress(0);
+    setCurrentScanningModule(null);
+    setModuleStatus(ALL_MODULES.map(name => ({ name, status: "pending" })));
+    setDetectedCodes([]);
+    setIsScanCompleted(false);
+    
+    // Stop sensor simulation if active
+    if (isSimulatingSensors) {
+        if (sensorIntervalRef.current) {
+            clearInterval(sensorIntervalRef.current);
+            sensorIntervalRef.current = null;
+        }
+        setIsSimulatingSensors(false);
+        setLiveSensorData({ rpm: '---', coolantTemp: '--', speed: '--' });
+    }
+  }, [isSimulatingSensors]);
+
 
   const handleConnect = (type: "usb" | "bluetooth") => {
     setConnectionStatus("connecting");
     toast({ title: "Connecting...", description: `Attempting ${type} connection.` });
     setTimeout(() => {
-      // Simulate connection success/failure
-      if (Math.random() > 0.2) { // 80% success rate
+      if (Math.random() > 0.2) {
         setConnectionStatus("connected");
         toast({ title: "Connected!", description: `Successfully connected via ${type}.`, variant: "default" });
-        // Simulate fetching vehicle info
         setTimeout(() => {
           setVehicleInfo({ vin: "JN1AZ0000FAKEVIN", make: "Nissan", model: "Altima", year: "2022" });
         }, 500);
@@ -74,20 +133,25 @@ export default function CarDocPage() {
     toast({ title: "Vehicle Info Saved", description: `${info.make} ${info.model} (${info.year}) details updated.` });
   };
   
-  const resetScanState = () => {
-    setIsScanning(false);
-    setScanProgress(0);
-    setCurrentScanningModule(null);
-    setModuleStatus(ALL_MODULES.map(name => ({ name, status: "pending" })));
-    setDetectedCodes([]);
-    setIsScanCompleted(false);
-  };
 
   const startFullScanSimulation = useCallback(() => {
     if (!vehicleInfo) {
       toast({ title: "Vehicle Info Missing", description: "Please provide vehicle details before scanning.", variant: "destructive" });
       return;
     }
+
+    // Stop sensor simulation if it's running
+    if (isSimulatingSensors) {
+        if (sensorIntervalRef.current) {
+            clearInterval(sensorIntervalRef.current);
+            sensorIntervalRef.current = null;
+        }
+        setIsSimulatingSensors(false);
+        setLiveSensorData({ rpm: '---', coolantTemp: '--', speed: '--' });
+        toast({ title: "Sensor Simulation Stopped", description: "Starting full vehicle scan."});
+    }
+
+
     setIsScanning(true);
     setIsScanCompleted(false);
     setScanProgress(0);
@@ -105,13 +169,11 @@ export default function CarDocPage() {
       setCurrentScanningModule(ALL_MODULES[currentModuleIndex]);
       setModuleStatus([...newModuleStatus]);
 
-      // Simulate module scan time
       setTimeout(() => {
-        const moduleHasError = Math.random() < 0.1; // 10% chance of module error
+        const moduleHasError = Math.random() < 0.1; 
         newModuleStatus[currentModuleIndex].status = moduleHasError ? 'error' : 'complete';
         setModuleStatus([...newModuleStatus]);
 
-        // Simulate finding codes
         if (!moduleHasError && Math.random() > 0.5 && tempCodes.length < MOCK_CODES.length) {
            const newCodeIndex = tempCodes.length % MOCK_CODES.length;
            const mockCode = MOCK_CODES[newCodeIndex];
@@ -135,11 +197,11 @@ export default function CarDocPage() {
         } else {
           setCurrentScanningModule(ALL_MODULES[currentModuleIndex]);
         }
-      }, 1000 + Math.random() * 1000); // Each module takes 1-2 seconds
-    }, 1500); // Interval between starting module scans
+      }, 1000 + Math.random() * 1000); 
+    }, 1500); 
 
     return () => clearInterval(scanInterval);
-  }, [vehicleInfo, toast]);
+  }, [vehicleInfo, toast, isSimulatingSensors]);
 
 
   const handleExplainCode = async (codeId: string, code: string, vehicleDetailsStr: string | null) => {
@@ -189,7 +251,7 @@ export default function CarDocPage() {
             onStartScan={startFullScanSimulation}
             onCancelScan={() => {
               setIsScanning(false);
-              // Logic to properly stop the interval if startFullScanSimulation returns it
+              resetScanState(); // Also resets sensor sim
               toast({title: "Scan Cancelled", description: "Vehicle scan has been stopped."});
             }}
             isScanCompleted={isScanCompleted}
@@ -197,10 +259,17 @@ export default function CarDocPage() {
         </>
       )}
       
-      {isScanCompleted && detectedCodes.length > 0 && (
+      {isScanCompleted && (detectedCodes.length > 0 || connectionStatus === 'connected') && ( // Show results card if codes or connected for live data
          <>
           <Separator />
-          <DiagnosticResults codes={detectedCodes} onExplainCode={handleExplainCode} vehicleDetails={vehicleDetailsString} />
+          <DiagnosticResults 
+            codes={detectedCodes} 
+            onExplainCode={handleExplainCode} 
+            vehicleDetails={vehicleDetailsString}
+            liveSensorData={liveSensorData}
+            isSimulatingSensors={isSimulatingSensors}
+            onToggleSensorSimulation={handleToggleSensorSimulation}
+          />
          </>
       )}
        {isScanCompleted && detectedCodes.length === 0 && (
@@ -221,3 +290,4 @@ export default function CarDocPage() {
     </div>
   );
 }
+
