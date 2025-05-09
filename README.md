@@ -1,6 +1,6 @@
-# Firebase Studio cars ODB scanner
+# CarDoc - ODB Scanner
 
-This is a NextJS frontend for Firebase Studio cars ODB scanner.
+This is a NextJS frontend for a Car ODB scanner, built with Firebase Studio.
 
 ## Getting Started
 
